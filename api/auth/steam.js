@@ -90,7 +90,7 @@ export default async function handler(req, res) {
   // Anyone may attempt sign-in; only roster members get a session.
   let member;
   try {
-    member = await db.find("members", { id64: match[1] }, "id");
+    member = await db.find("ahp_members", { id64: match[1] }, "id");
   } catch {
     return bounce(res, "/admin.html?error=misconfigured");
   }

@@ -15,7 +15,7 @@ let cache = { at: 0, payload: null };
 // Channels come from the roster, so a handle edited in the admin page takes
 // effect without a redeploy. Capped at Helix's 100-login limit per request.
 async function channels() {
-  const rows = await db.select("members", "twitch=not.is.null&select=twitch");
+  const rows = await db.select("ahp_members", "twitch=not.is.null&select=twitch");
   return [...new Set(rows.map(r => String(r.twitch).toLowerCase()).filter(Boolean))].slice(0, 100);
 }
 

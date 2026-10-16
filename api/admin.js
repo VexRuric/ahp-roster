@@ -82,8 +82,8 @@ export default async function handler(req, res) {
 
       case "list": {
         const [members, open] = await Promise.all([
-          db.select("members", "select=id,name,steam_id,id64,tier,twitch,is_super&order=name.asc"),
-          db.select("pending_changes",
+          db.select("ahp_members", "select=id,name,steam_id,id64,tier,twitch,is_super&order=name.asc"),
+          db.select("ahp_pending_changes",
             "status=eq.pending&select=id,member_id,proposed_tier,requested_by,requested_at")
         ]);
         const nameOf = Object.fromEntries(members.map(m => [m.id64, m.name]));
@@ -117,7 +117,7 @@ export default async function handler(req, res) {
         }
 
         try {
-          const [row] = await db.insert("members", {
+          const [row] = await db.insert("ahp_members", {
             name, steam_id: sid, id64: toId64(sid), tier, twitch: twitch || null
           });
           await audit(user.id64, "create", name, { tier, sid });
@@ -129,7 +129,7 @@ export default async function handler(req, res) {
       }
 
       case "update": {
-        const target = await db.find("members", { id: b.id });
+        const target = await db.find("ahp_members", { id: b.id });
         if (!target) return bad(res, 404, "Member not found.");
         if (!canAffect(user, target)) {
           return bad(res, 403, `${target.name} can only be edited by a super admin.`);
@@ -172,7 +172,7 @@ export default async function handler(req, res) {
         }
 
         try {
-          await db.update("members", { id: target.id }, patch);
+          await db.update("ahp_members", { id: target.id }, patch);
         } catch (e) {
           if (e.duplicate) return bad(res, 409, "Another member already has that SteamID.");
           throw e;
@@ -182,7 +182,7 @@ export default async function handler(req, res) {
       }
 
       case "tier": {
-        const target = await db.find("members", { id: b.id });
+        const target = await db.find("ahp_members", { id: b.id });
         if (!target) return bad(res, 404, "Member not found.");
         if (!TIERS.includes(b.tier)) return bad(res, 400, "Unknown tier.");
         if (!canAffect(user, target)) {
@@ -193,7 +193,7 @@ export default async function handler(req, res) {
         // Promotions into leadership wait for a second leader.
         if (b.tier === "leadership") {
           try {
-            await db.insert("pending_changes", {
+            await db.insert("ahp_pending_changes", {
               member_id: target.id, proposed_tier: "leadership", requested_by: user.id64
             });
           } catch (e) {
@@ -215,10 +215,10 @@ export default async function handler(req, res) {
           });
         }
 
-        await db.update("members", { id: target.id }, { tier: b.tier });
+        await db.update("ahp_members", { id: target.id }, { tier: b.tier });
         // A member who just moved tier cannot be left holding an open proposal.
         await db.update(
-          "pending_changes", { member_id: target.id },
+          "ahp_pending_changes", { member_id: target.id },
           { status: "rejected", decided_by: user.id64, decided_at: new Date().toISOString() },
           "&status=eq.pending"
         );
@@ -227,13 +227,13 @@ export default async function handler(req, res) {
       }
 
       case "approve": {
-        const p = await db.find("pending_changes", { id: b.id });
+        const p = await db.find("ahp_pending_changes", { id: b.id });
         if (!p || p.status !== "pending") return bad(res, 404, "That proposal is no longer open.");
         if (p.requested_by === user.id64) {
           return bad(res, 403, "A second leader has to approve. You proposed this one.");
         }
 
-        const target = await db.find("members", { id: p.member_id });
+        const target = await db.find("ahp_members", { id: p.member_id });
         if (!target) return bad(res, 404, "Member no longer exists.");
         if (!canAffect(user, target)) {
           return bad(res, 403, `${target.name} can only be changed by a super admin.`);
@@ -241,20 +241,20 @@ export default async function handler(req, res) {
 
         // Guarded so a double click cannot apply the same proposal twice.
         const closed = await db.update(
-          "pending_changes", { id: p.id },
+          "ahp_pending_changes", { id: p.id },
           { status: "approved", decided_by: user.id64, decided_at: new Date().toISOString() },
           "&status=eq.pending"
         );
         if (!closed || !closed.length) return bad(res, 409, "That proposal was just decided.");
 
-        await db.update("members", { id: target.id }, { tier: p.proposed_tier });
+        await db.update("ahp_members", { id: target.id }, { tier: p.proposed_tier });
         await audit(user.id64, "approve_leadership", target.name, { proposed_by: p.requested_by });
         return res.status(200).json({ ok: true });
       }
 
       case "reject": {
         const closed = await db.update(
-          "pending_changes", { id: b.id },
+          "ahp_pending_changes", { id: b.id },
           { status: "rejected", decided_by: user.id64, decided_at: new Date().toISOString() },
           "&status=eq.pending"
         );
@@ -264,14 +264,14 @@ export default async function handler(req, res) {
       }
 
       case "delete": {
-        const target = await db.find("members", { id: b.id });
+        const target = await db.find("ahp_members", { id: b.id });
         if (!target) return bad(res, 404, "Member not found.");
         if (!canAffect(user, target)) {
           return bad(res, 403, `${target.name} can only be removed by a super admin.`);
         }
         if (target.id64 === user.id64) return bad(res, 400, "You cannot delete your own account.");
 
-        await db.remove("members", { id: target.id });
+        await db.remove("ahp_members", { id: target.id });
         await audit(user.id64, "delete", target.name, { tier: target.tier, sid: target.steam_id });
         return res.status(200).json({ ok: true });
       }

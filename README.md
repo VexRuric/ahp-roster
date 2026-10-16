@@ -46,8 +46,14 @@ work, never in the repo. `.env.example` lists what is needed.
 
 ## 1. Database
 
-Create a Supabase project. In the SQL editor, run `schema.sql`, then `seed.sql`.
-Both are safe to re-run: the seed uses `on conflict do nothing`.
+In the Supabase SQL editor, run `schema.sql`, then `seed.sql`. Both are safe
+to re-run: the seed uses `on conflict do nothing`.
+
+Every table is named `ahp_members`, `ahp_pending_changes`, `ahp_audit_log`,
+so this can share a Supabase project with another app. Do not remove the
+prefix. `create table if not exists members` against a database that already
+owns a `members` table silently succeeds without creating anything, and the
+seed then writes 190 rows into that other app's table.
 
 From Project Settings, API, collect the project URL and the **service role**
 key. The service role key bypasses row-level security and must only ever live
@@ -144,8 +150,13 @@ The browser is not a security boundary, so each of these is enforced in
 
 ## Twitch handles
 
-`api/live.js` reads channels from the `twitch` column, so adding a streamer in
-the admin page is enough. There is no second list to maintain.
+`api/live.js` reads channels from the `ahp_members.twitch` column, so adding a
+streamer in the admin page is enough. There is no second list to maintain.
+
+The client ID in `api/live.js` is a default; set `TWITCH_CLIENT_ID` to point
+at a different Twitch app. If another Vercel project already holds a working
+`TWITCH_CLIENT_SECRET`, promote it to a Shared environment variable and
+attach it here rather than storing the secret twice.
 
 ## Notes
 

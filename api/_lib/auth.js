@@ -59,7 +59,7 @@ function readCookie(req) {
 export async function currentUser(req) {
   const id64 = readCookie(req);
   if (!id64) return null;
-  return db.find("members", { id64 }, "id,name,id64,tier,is_super");
+  return db.find("ahp_members", { id64 }, "id,name,id64,tier,is_super");
 }
 
 // Cross-site writes. SameSite=Lax already withholds the cookie from a

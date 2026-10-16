@@ -37,15 +37,15 @@ const qsOf = p => p.split("?")[1] || "";
 globalThis.fetch = async (url, opts = {}) => {
   const path = decodeURIComponent(String(url).replace("https://db.example/rest/v1/", ""));
   const table = tableOf(path), qs = qsOf(path);
-  const rows = table === "members" ? members : table === "pending_changes" ? pending : [];
+  const rows = table === "ahp_members" ? members : table === "ahp_pending_changes" ? pending : [];
   const m = opts.method || "GET";
   const body = opts.body ? JSON.parse(opts.body) : null;
   const reply = (d, s = 200) => ({ ok: s < 400, status: s, text: async () => JSON.stringify(d) });
 
-  if (table === "audit_log") return reply([]);
+  if (table === "ahp_audit_log") return reply([]);
   if (m === "GET") return reply(match(rows, qs));
   if (m === "POST") {
-    if (table === "pending_changes") {
+    if (table === "ahp_pending_changes") {
       if (pending.some(x => x.member_id === body.member_id && x.status === "pending"))
         return reply({ message: "duplicate key value" }, 409);
       const row = { id: U(90 + ++seq), status: "pending", ...body };
@@ -62,7 +62,7 @@ globalThis.fetch = async (url, opts = {}) => {
   }
   if (m === "DELETE") {
     const hits = match(rows, qs);
-    if (table === "members") members = members.filter(r => !hits.includes(r));
+    if (table === "ahp_members") members = members.filter(r => !hits.includes(r));
     return reply(hits);
   }
 };
@@ -167,10 +167,10 @@ const D = await import(ROOT + "_lib/db.js");
 
 // --- unfiltered write guard: the mass-delete footgun ---
 let threw = false;
-try { await D.db.remove("members", {}); } catch (e) { threw = /unfiltered/.test(e.message); }
+try { await D.db.remove("ahp_members", {}); } catch (e) { threw = /unfiltered/.test(e.message); }
 t("empty filter DELETE refused", threw, true);
 threw = false;
-try { await D.db.update("members", {}, { tier: "leadership" }); } catch (e) { threw = /unfiltered/.test(e.message); }
+try { await D.db.update("ahp_members", {}, { tier: "leadership" }); } catch (e) { threw = /unfiltered/.test(e.message); }
 t("empty filter PATCH refused", threw, true);
 
 // --- uuid validation ---

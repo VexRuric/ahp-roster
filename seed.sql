@@ -1,5 +1,5 @@
 -- Seed the roster. Safe to re-run: existing rows are left alone.
-insert into members (name, steam_id, id64, tier, twitch, is_super) values
+insert into ahp_members (name, steam_id, id64, tier, twitch, is_super) values
   ('Bob', 'STEAM_0:0:3773447', '76561197967812622', 'leadership', null, false),
   ('Devilman', 'STEAM_0:1:3565153', '76561197967396035', 'leadership', null, true),
   ('Guinness', 'STEAM_0:1:8452929', '76561197977171587', 'leadership', null, true),

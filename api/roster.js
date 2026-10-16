@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   if (!configured()) return res.status(500).json({ error: "Database is not configured." });
 
   try {
-    const rows = await db.select("members", "select=name,steam_id,id64,tier,twitch");
+    const rows = await db.select("ahp_members", "select=name,steam_id,id64,tier,twitch");
 
     const tiers = Object.fromEntries(ORDER.map(t => [t, []]));
     for (const r of rows) {

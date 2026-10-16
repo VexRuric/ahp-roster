@@ -75,7 +75,7 @@ export const db = {
 
 export async function audit(actor, action, target, detail) {
   try {
-    await db.insert("audit_log", { actor, action, target, detail });
+    await db.insert("ahp_audit_log", { actor, action, target, detail });
   } catch {
     // An audit write must never break the action it is recording.
   }
