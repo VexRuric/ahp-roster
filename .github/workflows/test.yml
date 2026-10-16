@@ -1,0 +1,31 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # Runs offline against an in-memory stand-in. No database, no secrets.
+      - run: node test/security.mjs
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse a committed credential
+        run: |
+          if grep -rniE 'eyJ[A-Za-z0-9_-]{30,}|service_role.*[:=].*[A-Za-z0-9]{20}' \
+               --include='*.js' --include='*.html' --include='*.json' \
+               --include='*.sql' --include='*.css' .; then
+            echo "::error::Something that looks like a key is committed."
+            exit 1
+          fi
+          echo "clean"

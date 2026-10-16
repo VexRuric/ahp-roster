@@ -1,0 +1,12 @@
+# Secrets. Nothing in this project needs a committed credential.
+.env
+.env.*
+!.env.example
+
+# Vercel
+.vercel
+
+# Editors and OS
+node_modules/
+.DS_Store
+*.swp

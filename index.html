@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>(-AHP-) After Hours Pub &mdash; Member Roster</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .layout {
+    max-width: 942px;
+    margin: 0 auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .window { flex: 1; min-width: 0; max-width: 560px; }
+  #search { flex: 1; padding: 6px 8px; }
+
+  .group-header {
+    position: sticky;
+    top: 0;
+    display: flex;
+    justify-content: space-between;
+    cursor: pointer;
+    user-select: none;
+  }
+  .group-header .n { color: var(--text-dim); font-weight: normal; }
+  .group-header::before { content: "\25BE "; color: var(--text-dim); }
+  .group.collapsed .group-header::before { content: "\25B8 "; }
+  .group.collapsed .rows { display: none; }
+
+  .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #4f6b84;
+    border: 1px solid var(--border-dark);
+    flex: none;
+  }
+  .group-leadership .dot { background: var(--leader); }
+  .group-management .dot { background: var(--mgmt); }
+  .ext { font-size: 10px; color: var(--gold-dim); flex: none; }
+  .row:hover .ext { color: var(--gold); }
+
+  .group-legends { border-top: 2px solid var(--gold-dim); background: var(--sunken); }
+  .group-legends .group-header { background: #101822; color: var(--legend); }
+  .group-legends .dot {
+    background: transparent;
+    border: 1px solid var(--legend);
+    box-shadow: 0 0 4px rgba(255,205,140,.45);
+  }
+  .group-legends .row:hover { background: #1d3346; }
+  .memoriam {
+    padding: 8px 12px 10px;
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--text-dim);
+    font-style: italic;
+    border-bottom: 1px solid rgba(16,24,34,.6);
+  }
+
+  /* live panel */
+  .live {
+    border-bottom: 1px solid var(--border-dark);
+    box-shadow: inset 0 1px 0 var(--border-light);
+    padding: 10px 12px;
+  }
+  .live-label {
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+  .live-card {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    text-decoration: none;
+    color: var(--text);
+    background: var(--sunken);
+    border: 1px solid var(--border-dark);
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,.04);
+    padding: 8px 10px;
+    margin-bottom: 5px;
+  }
+  .live-card:last-child { margin-bottom: 0; }
+  .live-card:hover, .live-card:focus-visible {
+    background: #1d3346;
+    border-color: var(--twitch);
+    outline: none;
+  }
+  .live-card .thumb {
+    width: 96px; height: 54px;
+    object-fit: cover;
+    border: 1px solid var(--border-dark);
+    flex: none;
+    background: #0d1620;
+  }
+  .live-card .stream { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .live-card .line1 { display: flex; align-items: center; gap: 7px; }
+  .live-card .who { font-weight: bold; }
+  .live-card .title, .live-card .chan {
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .live-card .title { font-size: 11px; }
+  .live-card .chan { font-size: 10px; color: var(--twitch); }
+  .live-card .up { font-size: 10px; color: var(--text-dim); flex: none; }
+  .live-card.house .who { flex: 1; color: var(--text-dim); font-weight: normal; }
+  .live-card.house .pulse {
+    background: transparent;
+    border: 1px solid var(--text-dim);
+    animation: none;
+    box-shadow: none;
+  }
+  .pulse {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--danger);
+    flex: none;
+    box-shadow: 0 0 0 0 rgba(224,72,61,.6);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .pulse { animation: pulse 2s infinite; }
+  }
+  @keyframes pulse {
+    70%  { box-shadow: 0 0 0 7px rgba(224,72,61,0); }
+    100% { box-shadow: 0 0 0 0 rgba(224,72,61,0); }
+  }
+
+  /* discord sidebar */
+  .side { width: 352px; flex: none; position: sticky; top: 24px; }
+  .side-body { padding: 1px; line-height: 0; background: var(--sunken); }
+  .side iframe { display: block; width: 100%; height: 500px; border: 0; }
+  .dc-fallback {
+    padding: 28px 16px;
+    line-height: 1.6;
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: center;
+  }
+  .dc-fallback strong { display: block; color: var(--text); margin-bottom: 6px; font-size: 12px; }
+
+  #empty { display: none; }
+  @media (max-width: 940px) {
+    .layout { flex-direction: column; align-items: center; max-width: 560px; }
+    .window { width: 100%; }
+    .side { position: static; width: 100%; max-width: 560px; }
+  }
+  @media (max-width: 420px) { .ext { display: none; } }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<div class="window">
+  <div class="titlebar">
+    <h1>(-AHP-) After Hours Pub &mdash; Member Roster</h1>
+    <span class="count" id="count"></span>
+  </div>
+  <div class="live">
+    <div class="live-label" id="live-label">Checking channels&hellip;</div>
+    <div id="live-body"></div>
+  </div>
+  <div class="toolbar">
+    <input id="search" type="text" placeholder="Filter by name or SteamID&hellip;" autocomplete="off">
+  </div>
+  <div id="list"><div class="muted">Loading the roster&hellip;</div></div>
+  <div class="muted" id="empty">No members match.</div>
+  <div class="footer">
+    Click a member to open their Steam Community profile &middot;
+    <a class="link" href="/admin.html">Admin</a>
+  </div>
+</div>
+
+<aside class="side">
+  <div class="titlebar">
+    <h1>Discord</h1>
+    <span class="count">(-AHP-)</span>
+  </div>
+  <div class="side-body" id="side-body">
+    <iframe id="dc"
+      src="https://discord.com/widget?id=632488035983949856&amp;theme=dark"
+      title="After Hours Pub Discord"
+      width="350" height="500"
+      sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"></iframe>
+  </div>
+  <div class="footer">
+    <a class="link" href="https://discord.com/widget?id=632488035983949856&amp;theme=dark"
+       target="_blank" rel="noopener">Open the widget in a new tab &#8599;</a>
+  </div>
+</aside>
+
+</div>
+
+<script>
+"use strict";
+
+const HOUSE = "afterhourspub";
+const TIER_LABEL = { leadership: "LEADERSHIP", management: "MANAGEMENT", member: "MEMBERS", legend: "LEGENDS" };
+const TIER_ORDER = ["leadership", "management", "member", "legend"];
+
+const list = document.getElementById("list");
+const empty = document.getElementById("empty");
+const count = document.getElementById("count");
+const liveLabel = document.getElementById("live-label");
+const liveBody = document.getElementById("live-body");
+
+// Twitch login (lowercase) -> member name. Filled by loadRoster.
+let byLogin = {};
+let total = 0;
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/* ---------- roster ---------- */
+
+function buildGroups(tiers) {
+  const frag = document.createDocumentFragment();
+  let n = 0;
+  byLogin = {};
+
+  for (const tier of TIER_ORDER) {
+    const members = tiers[tier] || [];
+    if (!members.length) continue;
+    n += members.length;
+
+    const rows = members.map(m => {
+      if (m.twitch) byLogin[m.twitch.toLowerCase()] = m.name;
+      return `<a class="row t-${tier}" href="https://steamcommunity.com/profiles/${esc(m.id64)}"
+          target="_blank" rel="noopener"
+          data-search="${esc((m.name + " " + m.sid + " " + (m.twitch || "")).toLowerCase())}">
+         <span class="dot"></span>
+         <span class="name">${esc(m.name)}</span>
+         ${m.twitch ? `<span class="tw" data-tw="${esc(m.twitch)}">twitch</span>` : ""}
+         <span class="ext">Steam profile &#8599;</span>
+       </a>`;
+    }).join("");
+
+    const wrap = document.createElement("div");
+    wrap.className = "group group-" + tier;
+    wrap.innerHTML =
+      `<div class="group-header" role="button" tabindex="0" aria-expanded="true">
+         <span>${TIER_LABEL[tier]}</span><span class="n" data-n>${members.length}</span>
+       </div>
+       <div class="rows">${
+         tier === "legend"
+           ? '<div class="memoriam">Members we’ve lost. Their profiles stay linked here.</div>'
+           : ""
+       }${rows}</div>`;
+
+    const header = wrap.querySelector(".group-header");
+    const toggle = () => {
+      const closed = wrap.classList.toggle("collapsed");
+      header.setAttribute("aria-expanded", String(!closed));
+    };
+    header.addEventListener("click", toggle);
+    header.addEventListener("keydown", e => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+    });
+    frag.appendChild(wrap);
+  }
+
+  list.replaceChildren(frag);
+  total = n;
+  count.textContent = n + " members";
+}
+
+async function loadRoster() {
+  try {
+    const r = await fetch("/api/roster", { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    const data = await r.json();
+    buildGroups(data.tiers || {});
+  } catch {
+    list.innerHTML = '<div class="muted">Roster could not be loaded. Refresh to try again.</div>';
+    count.textContent = "";
+  }
+}
+
+/* ---------- twitch live panel ---------- */
+
+function houseCard(note) {
+  return `<a class="live-card house" href="https://twitch.tv/${HOUSE}" target="_blank" rel="noopener">
+    <span class="pulse"></span>
+    <span class="who">${esc(note)}</span>
+    <span class="chan">twitch.tv/${HOUSE}</span>
+  </a>`;
+}
+
+function elapsed(iso) {
+  const mins = Math.max(0, Math.floor((Date.now() - new Date(iso)) / 60000));
+  const h = Math.floor(mins / 60);
+  return h ? `${h}h ${mins % 60}m` : `${mins}m`;
+}
+
+function liveCard(s) {
+  const who = byLogin[s.login] || s.display || s.login;
+  const meta = [s.game, s.viewers != null ? s.viewers.toLocaleString() + " watching" : null]
+    .filter(Boolean).join(" · ");
+  // Only Twitch's own CDN may supply a thumbnail; anything else is dropped.
+  const thumb = /^https:\/\/static-cdn\.jtvnw\.net\//.test(s.thumbnail || "") ? s.thumbnail : "";
+  return `<a class="live-card" href="https://twitch.tv/${encodeURIComponent(s.login)}"
+      target="_blank" rel="noopener">
+    ${thumb ? `<img class="thumb" src="${esc(thumb)}" alt="" loading="lazy">` : ""}
+    <span class="stream">
+      <span class="line1">
+        <span class="pulse"></span>
+        <span class="who">${esc(who)}</span>
+        <span class="up">${s.startedAt ? esc(elapsed(s.startedAt)) : ""}</span>
+      </span>
+      <span class="title">${esc(s.title || "")}</span>
+      <span class="chan">${esc(meta)}</span>
+    </span>
+  </a>`;
+}
+
+async function refreshLive() {
+  let live = null;
+  try {
+    const r = await fetch("/api/live", { cache: "no-store" });
+    if (r.ok) {
+      const data = await r.json();
+      if (Array.isArray(data.live)) live = data.live;
+    }
+  } catch { /* no backend reachable */ }
+
+  if (live === null) {
+    liveLabel.textContent = "Watch";
+    liveBody.innerHTML = houseCard("Live status unavailable — open the pub channel");
+  } else if (!live.length) {
+    liveLabel.textContent = "Watch";
+    liveBody.innerHTML = houseCard("Nobody live right now");
+  } else {
+    liveLabel.textContent = live.length === 1 ? "Live now" : live.length + " live now";
+    liveBody.innerHTML = live.map(liveCard).join("");
+  }
+}
+
+/* ---------- interactions ---------- */
+
+// A twitch chip inside a member row opens the channel, not the Steam profile.
+document.addEventListener("click", e => {
+  const chip = e.target.closest(".tw");
+  if (!chip) return;
+  e.preventDefault();
+  window.open("https://twitch.tv/" + encodeURIComponent(chip.dataset.tw), "_blank", "noopener");
+});
+
+document.getElementById("search").addEventListener("input", e => {
+  const q = e.target.value.trim().toLowerCase();
+  let shown = 0;
+  document.querySelectorAll(".group").forEach(g => {
+    let visible = 0;
+    g.querySelectorAll(".row").forEach(r => {
+      const hit = !q || r.dataset.search.includes(q);
+      r.hidden = !hit;
+      if (hit) visible++;
+    });
+    g.hidden = !visible;
+    g.querySelector("[data-n]").textContent = visible;
+    shown += visible;
+    if (q) g.classList.remove("collapsed");
+  });
+  empty.style.display = shown ? "none" : "block";
+  count.textContent = q ? `${shown} of ${total}` : `${total} members`;
+});
+
+// A blocked frame never fires load, so treat silence as failure.
+(function () {
+  const frame = document.getElementById("dc");
+  let loaded = false;
+  frame.addEventListener("load", () => { loaded = true; });
+  setTimeout(() => {
+    if (loaded) return;
+    document.getElementById("side-body").innerHTML =
+      `<div class="dc-fallback">
+         <strong>Widget could not load here</strong>
+         This page is being viewed somewhere that blocks embedded frames.
+         It will render normally once deployed.
+       </div>`;
+  }, 5000);
+})();
+
+loadRoster().then(refreshLive);
+setInterval(refreshLive, 60000);
+</script>
+</body>
+</html>

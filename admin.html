@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<title>(-AHP-) Roster Admin</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .window { max-width: 760px; margin: 0 auto; }
+  .pad { padding: 14px 12px; }
+
+  .signin { text-align: center; padding: 46px 20px; line-height: 1.7; }
+  .signin p { color: var(--text-dim); margin-bottom: 18px; }
+  .signin .err { color: var(--danger); }
+  .steam-btn {
+    display: inline-block;
+    text-decoration: none;
+    color: var(--gold);
+    border: 1px solid var(--gold-dim);
+    background: linear-gradient(to bottom, #2f5173, #22344a);
+    padding: 10px 22px;
+    font-weight: bold;
+    letter-spacing: .04em;
+  }
+  .steam-btn:hover { background: linear-gradient(to bottom, #3a628a, #27405a); }
+
+  .row select { padding: 3px 4px; font-size: 11px; }
+  .edit {
+    padding: 10px 12px;
+    background: var(--sunken);
+    border-bottom: 1px solid var(--border-dark);
+  }
+  .edit[hidden] { display: none; }
+  .field { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+  .field:last-child { margin-bottom: 0; }
+  .field label { width: 86px; flex: none; color: var(--text-dim); font-size: 11px; }
+  .field input, .field select { flex: 1; min-width: 0; }
+  .field button { flex: none; }
+  .hint { font-size: 10px; color: var(--text-dim); margin-top: 8px; line-height: 1.5; }
+
+  .pending {
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(16,24,34,.6);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .pending .txt { flex: 1; min-width: 200px; line-height: 1.5; }
+  .pending strong { color: var(--leader); }
+
+  .toast {
+    position: fixed;
+    left: 50%; bottom: 18px;
+    transform: translateX(-50%);
+    max-width: 92vw;
+    background: var(--panel-dark);
+    border: 1px solid var(--gold-dim);
+    padding: 10px 16px;
+    box-shadow: 3px 3px 0 rgba(0,0,0,.4);
+    line-height: 1.5;
+    z-index: 20;
+  }
+  .toast[hidden] { display: none; }
+  .toast.bad { border-color: var(--danger); }
+
+  #search { width: 100%; }
+  @media (max-width: 560px) {
+    .row .sid { display: none; }
+    .field { flex-wrap: wrap; }
+    .field label { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="window">
+  <div class="titlebar">
+    <h1>(-AHP-) Roster Admin</h1>
+    <span class="who" id="who"></span>
+  </div>
+  <div id="main"><div class="muted">Loading&hellip;</div></div>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+"use strict";
+
+const $ = s => document.querySelector(s);
+const TIERS = ["leadership", "management", "member", "legend"];
+const SIGNIN_ERRORS = {
+  not_a_member: "That Steam account is not on the roster.",
+  bad_assertion: "Steam could not verify that sign-in. Try again.",
+  steam_unreachable: "Steam did not respond. Try again in a moment.",
+  no_steamid: "Steam returned no account ID.",
+  misconfigured: "The site is not fully configured. Check the server environment variables."
+};
+
+let me = null, members = [], pending = [];
+
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+let toastTimer;
+function toast(msg, bad) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.className = "toast" + (bad ? " bad" : "");
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
+}
+
+// Reads go out as GET, everything that changes data as POST. The server
+// rejects a mutating GET outright, so a stray link can never write.
+async function api(action, body) {
+  const r = await fetch("/api/admin?action=" + action, {
+    method: body ? "POST" : "GET",
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+    credentials: "same-origin"
+  });
+  const data = await r.json().catch(() => ({}));
+  return { ok: r.ok, status: r.status, data };
+}
+
+// Retries once with confirm:true when the server asks for confirmation.
+async function send(action, payload, onDone) {
+  let r = await api(action, payload);
+  if (r.status === 409 && r.data.confirm) {
+    if (!confirm(r.data.confirm)) return null;
+    r = await api(action, { ...payload, confirm: true });
+  }
+  if (!r.ok) { toast(r.data.error || "That did not go through.", true); return null; }
+  if (onDone) onDone(r.data);
+  return r.data;
+}
+
+function signinScreen(code) {
+  $("#who").textContent = "";
+  $("#main").innerHTML =
+    `<div class="signin">
+       ${code ? `<p class="err">${esc(SIGNIN_ERRORS[code] || "Sign-in failed.")}</p>` : ""}
+       <p>Leadership only. Sign in with the Steam account on your roster entry.</p>
+       <a class="steam-btn" href="/api/auth/steam">Sign in through Steam</a>
+       <p style="margin-top:22px"><a class="link" href="/">Back to the roster</a></p>
+     </div>`;
+}
+
+function memberRow(m) {
+  const locked = m.is_super && !me.isSuper;
+  const isMe = m.id64 === me.id64;
+  const why = locked ? "Super admin — only another super admin can change this" : "";
+  return `
+  <div class="row t-${m.tier}" data-id="${m.id}">
+    <span class="name">${esc(m.name)}${m.is_super ? ' <span class="star" title="Super admin">&#9733;</span>' : ""}</span>
+    ${m.twitch ? `<span class="tw">${esc(m.twitch)}</span>` : ""}
+    <span class="sid">${esc(m.steam_id)}</span>
+    <select data-tier="${m.id}" ${locked ? "disabled" : ""} title="${esc(why || "Change tier")}"
+            aria-label="Tier for ${esc(m.name)}">
+      ${TIERS.map(t => `<option value="${t}"${t === m.tier ? " selected" : ""}>${t}</option>`).join("")}
+    </select>
+    <button data-edit="${m.id}" ${locked ? "disabled" : ""} title="${esc(why)}">edit</button>
+    <button class="danger" data-del="${m.id}" ${locked || isMe ? "disabled" : ""}
+      title="${esc(isMe ? "You cannot delete your own account" : why)}">del</button>
+  </div>
+  <div class="edit" id="edit-${m.id}" hidden>
+    <div class="field"><label for="n-${m.id}">Name</label>
+      <input id="n-${m.id}" value="${esc(m.name)}" maxlength="64"></div>
+    <div class="field"><label for="s-${m.id}">SteamID</label>
+      <input id="s-${m.id}" value="${esc(m.steam_id)}" placeholder="STEAM_0:1:12345" maxlength="32"></div>
+    <div class="field"><label for="t-${m.id}">Twitch</label>
+      <input id="t-${m.id}" value="${esc(m.twitch || "")}" placeholder="channel name only" maxlength="25"></div>
+    <div class="field"><label></label>
+      <button class="primary" data-save="${m.id}">Save</button>
+      <button data-cancel="${m.id}">Cancel</button></div>
+  </div>`;
+}
+
+function editValues(id) {
+  return {
+    id,
+    name: document.getElementById("n-" + id).value,
+    steam_id: document.getElementById("s-" + id).value,
+    twitch: document.getElementById("t-" + id).value
+  };
+}
+
+function render() {
+  $("#who").innerHTML =
+    `${esc(me.name)}${me.isSuper ? " &#9733;" : ""} &middot; ` +
+    `<a class="link" href="/">roster</a> &middot; ` +
+    `<a class="link" href="/api/auth/logout">sign out</a>`;
+
+  const pend = pending.map(p => `
+    <div class="pending">
+      <span class="txt"><strong>${esc(p.member_name)}</strong> proposed for leadership by ${esc(p.requested_by_name)}</span>
+      <button class="primary" data-approve="${p.id}" ${p.mine ? "disabled" : ""}
+        title="${p.mine ? "You proposed this one" : "Approve"}">Approve</button>
+      <button class="danger" data-reject="${p.id}">Reject</button>
+    </div>`).join("");
+
+  $("#main").innerHTML = `
+    ${pending.length ? `<div class="section-head">Waiting on a second leader</div>${pend}` : ""}
+
+    <div class="section-head">Add a member</div>
+    <div class="pad">
+      <div class="field"><label for="new-name">Name</label>
+        <input id="new-name" placeholder="Display name" maxlength="64"></div>
+      <div class="field"><label for="new-sid">SteamID</label>
+        <input id="new-sid" placeholder="STEAM_0:1:12345" maxlength="32"></div>
+      <div class="field"><label for="new-tw">Twitch</label>
+        <input id="new-tw" placeholder="optional" maxlength="25"></div>
+      <div class="field"><label for="new-tier">Tier</label>
+        <select id="new-tier">
+          <option value="member" selected>member</option>
+          <option value="management">management</option>
+          <option value="legend">legend</option>
+        </select>
+        <button class="primary" id="add">Add</button></div>
+      <div class="hint">New entries cannot start at leadership. Add them, then propose the
+        promotion so a second leader signs off.</div>
+    </div>
+
+    <div class="section-head">Roster (${members.length})</div>
+    <div class="toolbar"><input id="search" placeholder="Filter by name, SteamID or Twitch&hellip;"></div>
+    <div id="rows">${members.map(memberRow).join("")}</div>`;
+
+  $("#search").addEventListener("input", e => {
+    const q = e.target.value.trim().toLowerCase();
+    document.querySelectorAll("#rows .row").forEach(r => {
+      const hit = !q || r.textContent.toLowerCase().includes(q);
+      r.hidden = !hit;
+      const ed = document.getElementById("edit-" + r.dataset.id);
+      if (ed && !hit) ed.hidden = true;
+    });
+  });
+}
+
+async function load() {
+  const s = await api("session");
+  if (!s.ok) {
+    signinScreen(new URLSearchParams(location.search).get("error"));
+    return;
+  }
+  me = s.data;
+  const l = await api("list");
+  if (!l.ok) { toast(l.data.error || "Could not load the roster.", true); return; }
+  members = l.data.members;
+  pending = l.data.pending;
+  render();
+}
+
+document.addEventListener("click", async e => {
+  const d = e.target.dataset || {};
+
+  if (d.edit) {
+    const el = document.getElementById("edit-" + d.edit);
+    el.hidden = !el.hidden;
+  } else if (d.cancel) {
+    document.getElementById("edit-" + d.cancel).hidden = true;
+  } else if (d.save) {
+    await send("update", editValues(d.save), r => {
+      if (r.signedOut) { location.reload(); return; }
+      toast("Saved.");
+      load();
+    });
+  } else if (d.del) {
+    const m = members.find(x => x.id === d.del);
+    if (!confirm(`Remove ${m.name} from the roster? This cannot be undone.`)) return;
+    await send("delete", { id: m.id }, () => { toast(`${m.name} removed.`); load(); });
+  } else if (d.approve) {
+    await send("approve", { id: d.approve }, () => { toast("Approved. Leadership access granted."); load(); });
+  } else if (d.reject) {
+    await send("reject", { id: d.reject }, () => { toast("Proposal rejected."); load(); });
+  } else if (e.target.id === "add") {
+    await send("create", {
+      name: $("#new-name").value,
+      steam_id: $("#new-sid").value,
+      twitch: $("#new-tw").value,
+      tier: $("#new-tier").value
+    }, () => { toast("Member added."); load(); });
+  }
+});
+
+document.addEventListener("change", async e => {
+  const id = e.target.dataset.tier;
+  if (!id) return;
+  const m = members.find(x => x.id === id);
+  const tier = e.target.value;
+
+  const r = await send("tier", { id, tier });
+  if (!r) { load(); return; }
+
+  if (r.staged) { toast(r.message); }
+  else if (r.selfDemotion) {
+    toast("You stepped yourself down. Admin access ends now.");
+    setTimeout(() => location.reload(), 1200);
+    return;
+  } else {
+    toast(`${m.name} is now ${tier}.`);
+  }
+  load();
+});
+
+load();
+</script>
+</body>
+</html>
